@@ -1,6 +1,8 @@
 # smack_cli
 xmpp client command line using smack.
-java Main 127.0.0.1 5222 username password
+
+$ java Main 127.0.0.1 5222 username password
+
 xmpp> ?list
 abbrev	name	params
 ae	add-entry	(p1, p2, p3)

@@ -1,20 +1,23 @@
 package com.ruptech.chinatalk.smack;
 
-import java.io.*;
-import java.util.Collection;
-import java.util.Iterator;
-
+import asg.cliche.Command;
+import asg.cliche.ShellFactory;
 import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.packet.Packet;
 import org.jivesoftware.smack.packet.Presence;
+import org.jivesoftware.smackx.Form;
 import org.jivesoftware.smackx.OfflineMessageManager;
-
-import asg.cliche.Command;
-import asg.cliche.ShellFactory;
+import org.jivesoftware.smackx.ReportedData;
 import org.jivesoftware.smackx.filetransfer.FileTransferManager;
 import org.jivesoftware.smackx.filetransfer.OutgoingFileTransfer;
 import org.jivesoftware.smackx.packet.VCard;
+import org.jivesoftware.smackx.search.UserSearchManager;
+
+import java.io.*;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.Iterator;
 
 public class Main {
     private String account;
@@ -36,12 +39,7 @@ public class Main {
 
     private ChatManager chatManager;
 
-    MessageListener messageListener = new MessageListener() {
-        public void processMessage(Chat chat, Message message) {
-            _info("GOT message: " + message.toXML());
-        }
-
-    };
+    MessageListener messageListener = (chat, message) -> _info("GOT message: " + message.toXML());
 
     private Roster roster;
 
@@ -61,6 +59,9 @@ public class Main {
         // Connect to the server
         connection.connect();
         connection.login(account, password);
+
+        _getChatManager();
+        //registerPacketListener();
     }
 
     private Chat _createChat(String user, ChatManager cm) {
@@ -70,13 +71,9 @@ public class Main {
     private ChatManager _getChatManager() {
         if (chatManager == null) {
             chatManager = connection.getChatManager();
-            chatManager.addChatListener(new ChatManagerListener() {
-
-                @Override
-                public void chatCreated(Chat chat, boolean createdLocally) {
-                    if (!createdLocally)
-                        chat.addMessageListener(messageListener);
-                }
+            chatManager.addChatListener((chat, createdLocally) -> {
+                if (!createdLocally)
+                    chat.addMessageListener(messageListener);
             });
         }
         return chatManager;
@@ -139,11 +136,52 @@ public class Main {
             }
             in.close();
             out.close();
-            System.out.print("SAVE TO: " + avatar.getPath());
+            _info("SAVE TO: " + avatar.getPath());
             return vcard.toString();
         } catch (Exception e) {
             e.printStackTrace();
             return "error";
+        }
+    }
+
+    @Command
+    public String changeImage(String f) {
+        try {
+            VCard vcard = new VCard();
+            vcard.load(connection);
+
+            byte[] bytes;
+
+
+            bytes = _getFileBytes(new File(f));
+            String encodedImage = new String(Base64.getEncoder().encode(bytes));
+            vcard.setAvatar(bytes, encodedImage);
+            vcard.setField("PHOTO", "<TYPE>image/jpg</TYPE><BINVAL>"
+                    + encodedImage + "</BINVAL>", true);
+
+            vcard.save(connection);
+            return "ok";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
+
+    private static byte[] _getFileBytes(File file) throws IOException {
+        BufferedInputStream bis = null;
+        try {
+            bis = new BufferedInputStream(new FileInputStream(file));
+            int bytes = (int) file.length();
+            byte[] buffer = new byte[bytes];
+            int readBytes = bis.read(buffer);
+            if (readBytes != buffer.length) {
+                throw new IOException("Entire file not read");
+            }
+            return buffer;
+        } finally {
+            if (bis != null) {
+                bis.close();
+            }
         }
     }
 
@@ -167,7 +205,7 @@ public class Main {
     }
 
     @Command
-    public String entrieList() {
+    public String entryList() {
         try {
             if (!isAuthenticated()) {
                 _connect(server, port, account, password);
@@ -205,6 +243,34 @@ public class Main {
     }
 
     @Command
+    public String searchUsers(String str) {
+        try {
+            UserSearchManager usm = new UserSearchManager(connection);
+            Form searchForm = null;
+            String serverService = "leis-mbp";
+            searchForm = usm.getSearchForm(serverService);
+            Form answerForm = searchForm.createAnswerForm();
+            answerForm.setAnswer("Username", true);
+            answerForm.setAnswer("search", str);
+            ReportedData data = usm.getSearchResults(answerForm, serverService);
+
+            StringBuffer sb = new StringBuffer();
+            sb.append('[').append('\n');
+            Iterator<ReportedData.Row> it = data.getRows();
+            while (it.hasNext()) {
+                ReportedData.Row row = it.next();
+                sb.append(row.getValues("Username").next()).append(',').append('\n');
+                sb.append(row.getValues("Name").next()).append(',').append('\n');
+                sb.append(row.getValues("Email").next()).append(',').append('\n');
+            }
+            return sb.append(']').toString();
+        } catch (XMPPException e) {
+            e.printStackTrace();
+            return "err";
+        }
+    }
+
+    @Command
     public String login() {
         try {
             if (!isAuthenticated()) {
@@ -224,8 +290,7 @@ public class Main {
         try {
             Iterator<Message> it = offlineManager.getMessages();
 
-            System.out.println(offlineManager.supportsFlexibleRetrieval());
-            System.out.println("count: " + offlineManager.getMessageCount());
+            _info("count: " + offlineManager.getMessageCount());
 
             StringBuffer sb = new StringBuffer("messages :[");
 
@@ -245,8 +310,8 @@ public class Main {
         return "err";
     }
 
-    private void _info(String s) {
-        System.out.print(s);
+    private void _info(String s, Object... args) {
+        System.out.println(String.format(s, args));
     }
 
     @Command
@@ -442,21 +507,21 @@ public class Main {
                 presence.setMode(Presence.Mode.chat);
                 connection.sendPacket(presence);
                 _info("state" + "设置Q我吧");
-                System.out.println(presence.toXML());
+                _info(presence.toXML());
                 break;
             case 2:
                 presence = new Presence(Presence.Type.available);
                 presence.setMode(Presence.Mode.dnd);
                 connection.sendPacket(presence);
                 _info("state" + "设置忙碌");
-                System.out.println(presence.toXML());
+                _info(presence.toXML());
                 break;
             case 3:
                 presence = new Presence(Presence.Type.available);
                 presence.setMode(Presence.Mode.away);
                 connection.sendPacket(presence);
                 _info("state" + "设置离开");
-                System.out.println(presence.toXML());
+                _info(presence.toXML());
                 break;
             case 4:
                 Roster roster = connection.getRoster();
@@ -467,7 +532,7 @@ public class Main {
                     presence.setFrom(connection.getUser());
                     presence.setTo(entry.getUser());
                     connection.sendPacket(presence);
-                    System.out.println(presence.toXML());
+                    _info(presence.toXML());
                 }
                 // // 向同一用户的其他客户端发送隐身状态
                 // presence = new Presence(Presence.Type.unavailable);
@@ -487,22 +552,14 @@ public class Main {
         }
     }
 
-    // @Command
-    // public String signup(String account, String password) {
-    // Registration reg = new Registration();
-    // reg.setType(IQ.Type.SET);
-    // reg.setTo(connection.getServiceName());
-    // reg.setUsername(account);//
-    // 注意这里createAccount注册时，参数是username，不是jid，是“@”前面的部分。
-    // reg.setPassword(password);
-    // reg.addAttribute("android", "geolo_createUser_android");//
-    // 这边addAttribute不能为空，否则出错。所以做个标志是android手机创建的吧！！！！！
-    // PacketFilter filter = new AndFilter(new PacketIDFilter(
-    // reg.getPacketID()), new PacketTypeFilter(IQ.class));
-    // PacketCollector collector = ClientConServer.connection
-    // .createPacketCollector(filter);
-    // ClientConServer.connection.sendPacket(reg);
-    // IQ result = (IQ) collector.nextResult(SmackConfiguration
-    // .getPacketReplyTimeout());
-    // }
+    @Command
+    public String signup(String account, String password) {
+        try {
+            connection.getAccountManager().createAccount(account, password);
+            return "ok";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "err";
+        }
+    }
 }
