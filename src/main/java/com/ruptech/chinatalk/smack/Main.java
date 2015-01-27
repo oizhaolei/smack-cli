@@ -4,7 +4,6 @@ import asg.cliche.Command;
 import asg.cliche.ShellFactory;
 import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.packet.Message;
-import org.jivesoftware.smack.packet.Packet;
 import org.jivesoftware.smack.packet.Presence;
 import org.jivesoftware.smackx.Form;
 import org.jivesoftware.smackx.OfflineMessageManager;
@@ -14,33 +13,43 @@ import org.jivesoftware.smackx.filetransfer.OutgoingFileTransfer;
 import org.jivesoftware.smackx.packet.VCard;
 import org.jivesoftware.smackx.search.UserSearchManager;
 
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
 import java.io.*;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Iterator;
 
 public class Main {
-    private String account;
-    private String password;
     String server;// = "127.0.0.1";
     int port;// = 5222;
+    Connection connection = null;
+    MessageListener messageListener = new MessageListener() {
+        @Override
+        public void processMessage(Chat chat, Message message) {
+            //_playSound();
+            _println("GOT message: " + message.toXML());
 
-    public static void main(String[] args) throws IOException {
-        if (args.length == 4) {
-            String server = args[0];
-            int port = Integer.parseInt(args[1]);
-            String account = args[2];
-            String password = args[3];
-            ShellFactory.createConsoleShell("xmpp", "", new Main(server, port, account, password)).commandLoop();
+        }
+    };
+    private AccountManager accountManager;
+
+    public void _playSound() {
+        try {
+            AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(getClass().getResourceAsStream("office.mp3"));
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioInputStream);
+            clip.start();
+        } catch (Exception ex) {
+            System.out.println("Error with playing sound.");
+            ex.printStackTrace();
         }
     }
 
-    Connection connection = null;
-
+    private String account;
+    private String password;
     private ChatManager chatManager;
-
-    MessageListener messageListener = (chat, message) -> _info("GOT message: " + message.toXML());
-
     private Roster roster;
 
     public Main(String server, int port, String account, String password) {
@@ -49,6 +58,39 @@ public class Main {
         this.port = port;
         this.account = account;
         this.password = password;
+        
+        login();
+    }
+
+    public static void main(String[] args) throws IOException {
+        if (args.length < 4) {
+            //TODO commons-cli
+            _println("java Main host port account password");
+        } else {
+            String server = args[0];
+            int port = Integer.parseInt(args[1]);
+            String account = args[2];
+            String password = args[3];
+            ShellFactory.createConsoleShell("xmpp", "", new Main(server, port, account, password)).commandLoop();
+        }
+    }
+
+    private static byte[] _getFileBytes(File file) throws IOException {
+        BufferedInputStream bis = null;
+        try {
+            bis = new BufferedInputStream(new FileInputStream(file));
+            int bytes = (int) file.length();
+            byte[] buffer = new byte[bytes];
+            int readBytes = bis.read(buffer);
+            if (readBytes != buffer.length) {
+                throw new IOException("Entire file not read");
+            }
+            return buffer;
+        } finally {
+            if (bis != null) {
+                bis.close();
+            }
+        }
     }
 
     private void _connect(String server, int port, String account, String password) throws Exception {
@@ -58,8 +100,9 @@ public class Main {
         connection = new XMPPConnection(config);
         // Connect to the server
         connection.connect();
-        connection.login(account, password);
-
+        connection.login(account, password, "smaskCli");
+        String me = connection.getUser();
+        _println(me);
         _getChatManager();
         //registerPacketListener();
     }
@@ -71,9 +114,12 @@ public class Main {
     private ChatManager _getChatManager() {
         if (chatManager == null) {
             chatManager = connection.getChatManager();
-            chatManager.addChatListener((chat, createdLocally) -> {
-                if (!createdLocally)
-                    chat.addMessageListener(messageListener);
+            chatManager.addChatListener(new ChatManagerListener() {
+                @Override
+                public void chatCreated(Chat chat, boolean createdLocally) {
+                    if (!createdLocally)
+                        chat.addMessageListener(messageListener);
+                }
             });
         }
         return chatManager;
@@ -136,7 +182,7 @@ public class Main {
             }
             in.close();
             out.close();
-            _info("SAVE TO: " + avatar.getPath());
+            _println("SAVE TO: " + avatar.getPath());
             return vcard.toString();
         } catch (Exception e) {
             e.printStackTrace();
@@ -164,24 +210,6 @@ public class Main {
         } catch (Exception e) {
             e.printStackTrace();
             return "error";
-        }
-    }
-
-    private static byte[] _getFileBytes(File file) throws IOException {
-        BufferedInputStream bis = null;
-        try {
-            bis = new BufferedInputStream(new FileInputStream(file));
-            int bytes = (int) file.length();
-            byte[] buffer = new byte[bytes];
-            int readBytes = bis.read(buffer);
-            if (readBytes != buffer.length) {
-                throw new IOException("Entire file not read");
-            }
-            return buffer;
-        } finally {
-            if (bis != null) {
-                bis.close();
-            }
         }
     }
 
@@ -271,6 +299,32 @@ public class Main {
     }
 
     @Command
+    public String login(String server, int port, String account, String password) {
+        this.server = server;
+        this.port = port;
+        this.account = account;
+        this.password = password;
+        return login();
+    }
+
+    @Command
+    public String getAccountAttributes() {
+        Collection<String> attributes = _getAccountManager().getAccountAttributes();
+        StringBuffer sb = new StringBuffer();
+        for (String name:attributes ) {
+            sb.append(name).append(':');
+            String attr = _getAccountManager().getAccountAttribute(name);
+            sb.append(attr).append('\n');
+        }
+        return sb.toString();
+    }
+
+    @Command
+    public String getUser() {
+        return connection.getUser();
+    }
+
+    @Command
     public String login() {
         try {
             if (!isAuthenticated()) {
@@ -290,7 +344,7 @@ public class Main {
         try {
             Iterator<Message> it = offlineManager.getMessages();
 
-            _info("count: " + offlineManager.getMessageCount());
+            _println("count: " + offlineManager.getMessageCount());
 
             StringBuffer sb = new StringBuffer("messages :[");
 
@@ -310,7 +364,7 @@ public class Main {
         return "err";
     }
 
-    private void _info(String s, Object... args) {
+    private static void _println(String s, Object... args) {
         System.out.println(String.format(s, args));
     }
 
@@ -319,6 +373,7 @@ public class Main {
         try {
             if (connection != null) {
                 chatManager = null;
+                accountManager = null;
                 roster = null;
                 connection.disconnect();
             }
@@ -486,76 +541,53 @@ public class Main {
     @Command
     public String deleteAccount() {
         try {
-            connection.getAccountManager().deleteAccount();
+            _getAccountManager().deleteAccount();
             return "ok";
         } catch (Exception e) {
             return "err";
         }
     }
 
-    @Command
-    public void setPresence(int code) {
-        Presence presence;
-        switch (code) {
-            case 0:
-                presence = new Presence(Presence.Type.available);
-                connection.sendPacket(presence);
-                _info("state" + "设置在线");
-                break;
-            case 1:
-                presence = new Presence(Presence.Type.available);
-                presence.setMode(Presence.Mode.chat);
-                connection.sendPacket(presence);
-                _info("state" + "设置Q我吧");
-                _info(presence.toXML());
-                break;
-            case 2:
-                presence = new Presence(Presence.Type.available);
-                presence.setMode(Presence.Mode.dnd);
-                connection.sendPacket(presence);
-                _info("state" + "设置忙碌");
-                _info(presence.toXML());
-                break;
-            case 3:
-                presence = new Presence(Presence.Type.available);
-                presence.setMode(Presence.Mode.away);
-                connection.sendPacket(presence);
-                _info("state" + "设置离开");
-                _info(presence.toXML());
-                break;
-            case 4:
-                Roster roster = connection.getRoster();
-                Collection<RosterEntry> entries = roster.getEntries();
-                for (RosterEntry entry : entries) {
-                    presence = new Presence(Presence.Type.unavailable);
-                    presence.setPacketID(Packet.ID_NOT_AVAILABLE);
-                    presence.setFrom(connection.getUser());
-                    presence.setTo(entry.getUser());
-                    connection.sendPacket(presence);
-                    _info(presence.toXML());
-                }
-                // // 向同一用户的其他客户端发送隐身状态
-                // presence = new Presence(Presence.Type.unavailable);
-                // presence.setPacketID(Packet.ID_NOT_AVAILABLE);
-                // presence.setFrom(connection.getUser());
-                // presence.setTo(StringUtils.parseBareAddress(connection.getUser()));
-                // connection.sendPacket(presence);
-                // logInfo("state" + "设置隐身");
-                break;
-            case 5:
-                presence = new Presence(Presence.Type.unavailable);
-                connection.sendPacket(presence);
-                _info("state" + "设置离线");
-                break;
-            default:
-                break;
+    private AccountManager _getAccountManager() {
+        if (accountManager == null) {
+            accountManager = connection.getAccountManager();
         }
+        return accountManager;
     }
 
     @Command
-    public String signup(String account, String password) {
+    public void setPresence(String code) {
+        Presence presence;
+        switch (code) {
+            case "available":
+                presence = new Presence(Presence.Type.available);
+                break;
+            case "chat":
+                presence = new Presence(Presence.Type.available);
+                presence.setMode(Presence.Mode.chat);
+                break;
+            case "dnd":
+                presence = new Presence(Presence.Type.available);
+                presence.setMode(Presence.Mode.dnd);
+                break;
+            case "away":
+                presence = new Presence(Presence.Type.available);
+                presence.setMode(Presence.Mode.away);
+                break;
+            case "unavailable":
+                presence = new Presence(Presence.Type.unavailable);
+                break;
+            default:
+                presence = new Presence(Presence.Type.available);
+                break;
+        }
+        connection.sendPacket(presence);
+    }
+
+    @Command
+    public String createAccount(String account, String password) {
         try {
-            connection.getAccountManager().createAccount(account, password);
+            _getAccountManager().createAccount(account, password);
             return "ok";
         } catch (Exception e) {
             e.printStackTrace();
