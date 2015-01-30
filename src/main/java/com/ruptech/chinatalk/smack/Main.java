@@ -5,6 +5,7 @@ import asg.cliche.ShellFactory;
 import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.packet.Presence;
+import org.jivesoftware.smack.provider.ProviderManager;
 import org.jivesoftware.smackx.Form;
 import org.jivesoftware.smackx.OfflineMessageManager;
 import org.jivesoftware.smackx.ReportedData;
@@ -34,6 +35,8 @@ public class Main {
         }
     };
     private AccountManager accountManager;
+    private String smackResource = "smackCli";
+
 
     public void _playSound() {
         try {
@@ -58,7 +61,7 @@ public class Main {
         this.port = port;
         this.account = account;
         this.password = password;
-        
+
         login();
     }
 
@@ -100,7 +103,13 @@ public class Main {
         connection = new XMPPConnection(config);
         // Connect to the server
         connection.connect();
-        connection.login(account, password, "smaskCli");
+        connection.login(account, password, smackResource);
+
+        // TODO: merge to one?
+        ProviderManager.getInstance().addExtensionProvider(FromLang.ELEMENT_NAME, FromLang.NAMESPACE, new FromLang.Provider());
+        ProviderManager.getInstance().addExtensionProvider(ToLang.ELEMENT_NAME, ToLang.NAMESPACE, new ToLang.Provider());
+        ProviderManager.getInstance().addExtensionProvider(Cost.ELEMENT_NAME, Cost.NAMESPACE, new Cost.Provider());
+        ProviderManager.getInstance().addExtensionProvider(OriginId.ELEMENT_NAME, OriginId.NAMESPACE, new OriginId.Provider());
         String me = connection.getUser();
         _println(me);
         _getChatManager();
@@ -238,11 +247,20 @@ public class Main {
             if (!isAuthenticated()) {
                 _connect(server, port, account, password);
             }
+            StringBuffer sb = new StringBuffer();
 
             Roster roster = _getRoster();
+            Collection<RosterEntry> entries = roster.getEntries();
+            sb.append(":[\n");
+            for (RosterEntry entry : entries) {
+                sb.append('\t').
+                        append(entry).append(',').
+                        append(roster.getPresence(entry.getUser()).getFrom()).append(',').
+                        append('\n');
+            }
+            sb.append(']');
             Collection<RosterGroup> groups = roster.getGroups();
 
-            StringBuffer sb = new StringBuffer();
             for (RosterGroup group : groups) {
 
                 sb.append(group.getName()).append(":[\n");
@@ -273,14 +291,14 @@ public class Main {
     @Command
     public String searchUsers(String str) {
         try {
+            //TODO
             UserSearchManager usm = new UserSearchManager(connection);
             Form searchForm = null;
-            String serverService = "leis-mbp";
-            searchForm = usm.getSearchForm(serverService);
+            searchForm = usm.getSearchForm(server);
             Form answerForm = searchForm.createAnswerForm();
             answerForm.setAnswer("Username", true);
             answerForm.setAnswer("search", str);
-            ReportedData data = usm.getSearchResults(answerForm, serverService);
+            ReportedData data = usm.getSearchResults(answerForm, server);
 
             StringBuffer sb = new StringBuffer();
             sb.append('[').append('\n');
@@ -311,7 +329,7 @@ public class Main {
     public String getAccountAttributes() {
         Collection<String> attributes = _getAccountManager().getAccountAttributes();
         StringBuffer sb = new StringBuffer();
-        for (String name:attributes ) {
+        for (String name : attributes) {
             sb.append(name).append(':');
             String attr = _getAccountManager().getAccountAttribute(name);
             sb.append(attr).append('\n');
@@ -511,10 +529,18 @@ public class Main {
     }
 
     @Command
-    public String sendMessage(String user, String message) {
+    public String sendMessage(String user, String text) {
         try {
             ChatManager cm = _getChatManager();
             Chat chat = _createChat(user, cm);
+
+            Message message = new Message(chat.getParticipant(), Message.Type.chat);
+            message.setThread(chat.getThreadID());
+            message.setBody(text);
+
+            message.addExtension(new FromLang("CN"));
+            message.addExtension(new ToLang("EN"));
+
             chat.sendMessage(message);
         } catch (Exception e) {
             e.printStackTrace();
