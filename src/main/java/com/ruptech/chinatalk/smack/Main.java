@@ -291,22 +291,21 @@ public class Main {
     @Command
     public String searchUsers(String str) {
         try {
-            //TODO
+           String  searchService = "search."+connection.getServiceName();
             UserSearchManager usm = new UserSearchManager(connection);
-            Form searchForm = null;
-            searchForm = usm.getSearchForm(server);
+            Form  searchForm = usm.getSearchForm(searchService);
             Form answerForm = searchForm.createAnswerForm();
             answerForm.setAnswer("Username", true);
             answerForm.setAnswer("search", str);
-            ReportedData data = usm.getSearchResults(answerForm, server);
+            ReportedData data = usm.getSearchResults(answerForm, searchService);
 
             StringBuffer sb = new StringBuffer();
             sb.append('[').append('\n');
             Iterator<ReportedData.Row> it = data.getRows();
             while (it.hasNext()) {
                 ReportedData.Row row = it.next();
-                sb.append(row.getValues("Username").next()).append(',').append('\n');
-                sb.append(row.getValues("Name").next()).append(',').append('\n');
+                sb.append(row.getValues("Username").next()).append(',') ;
+                sb.append(row.getValues("Name").next()).append(',') ;
                 sb.append(row.getValues("Email").next()).append(',').append('\n');
             }
             return sb.append(']').toString();
