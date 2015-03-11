@@ -1,4 +1,4 @@
-package com.ruptech.chinatalk.smack;
+package com.ruptech.chinatalk.smack.extension;
 
 import org.jivesoftware.smack.packet.PacketExtension;
 import org.jivesoftware.smack.provider.PacketExtensionProvider;
@@ -7,12 +7,12 @@ import org.xmlpull.v1.XmlPullParser;
 /**
  * Created by zhaolei on 15/1/30.
  */
-public class Cost implements PacketExtension {
+public class ToLang implements PacketExtension {
     public static final String NAMESPACE = "http://jabber.org/protocol/tranlate";
-    public static final String ELEMENT_NAME = "cost";
+    public static final String ELEMENT_NAME = "tolang";
     private String name = null;
 
-    public Cost(String name) {
+    public ToLang(String name) {
         this.name = name;
     }
 
@@ -52,7 +52,7 @@ public class Cost implements PacketExtension {
                 parser.next();
             }
 
-            return new Cost(name);
+            return new ToLang(name);
         }
     }
 }

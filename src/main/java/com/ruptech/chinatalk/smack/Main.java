@@ -2,6 +2,10 @@ package com.ruptech.chinatalk.smack;
 
 import asg.cliche.Command;
 import asg.cliche.ShellFactory;
+import com.ruptech.chinatalk.smack.extension.Cost;
+import com.ruptech.chinatalk.smack.extension.FromLang;
+import com.ruptech.chinatalk.smack.extension.OriginId;
+import com.ruptech.chinatalk.smack.extension.ToLang;
 import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.packet.Presence;
@@ -9,14 +13,17 @@ import org.jivesoftware.smack.provider.ProviderManager;
 import org.jivesoftware.smackx.Form;
 import org.jivesoftware.smackx.OfflineMessageManager;
 import org.jivesoftware.smackx.ReportedData;
+import org.jivesoftware.smackx.ServiceDiscoveryManager;
 import org.jivesoftware.smackx.filetransfer.FileTransferManager;
 import org.jivesoftware.smackx.filetransfer.OutgoingFileTransfer;
+import org.jivesoftware.smackx.muc.MultiUserChat;
 import org.jivesoftware.smackx.packet.VCard;
 import org.jivesoftware.smackx.search.UserSearchManager;
 
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
+import java.awt.*;
 import java.io.*;
 import java.util.Base64;
 import java.util.Collection;
@@ -36,6 +43,7 @@ public class Main {
     };
     private AccountManager accountManager;
     private String smackResource = "smackCli";
+    private MultiUserChat currMuc;
 
 
     public void _playSound() {
@@ -113,7 +121,15 @@ public class Main {
         String me = connection.getUser();
         _println(me);
         _getChatManager();
+
+        Presence presence = new Presence(Presence.Type.available);
+        connection.sendPacket(presence);//上线了
+
         //registerPacketListener();
+        ServiceDiscoveryManager manager = ServiceDiscoveryManager.getInstanceFor(connection);
+        boolean mucSupported = manager.includesFeature("http://jabber.org/protocol/muc");
+        System.out.println( "mucSupported:" + mucSupported);
+
     }
 
     private Chat _createChat(String user, ChatManager cm) {
@@ -291,9 +307,9 @@ public class Main {
     @Command
     public String searchUsers(String str) {
         try {
-           String  searchService = "search."+connection.getServiceName();
+            String searchService = "search." + connection.getServiceName();
             UserSearchManager usm = new UserSearchManager(connection);
-            Form  searchForm = usm.getSearchForm(searchService);
+            Form searchForm = usm.getSearchForm(searchService);
             Form answerForm = searchForm.createAnswerForm();
             answerForm.setAnswer("Username", true);
             answerForm.setAnswer("search", str);
@@ -304,8 +320,8 @@ public class Main {
             Iterator<ReportedData.Row> it = data.getRows();
             while (it.hasNext()) {
                 ReportedData.Row row = it.next();
-                sb.append(row.getValues("Username").next()).append(',') ;
-                sb.append(row.getValues("Name").next()).append(',') ;
+                sb.append(row.getValues("Username").next()).append(',');
+                sb.append(row.getValues("Name").next()).append(',');
                 sb.append(row.getValues("Email").next()).append(',').append('\n');
             }
             return sb.append(']').toString();
@@ -372,8 +388,6 @@ public class Main {
             sb.append(']');
 
             offlineManager.deleteMessages();
-            Presence presence = new Presence(Presence.Type.available);
-            connection.sendPacket(presence);//上线了
             return sb.toString();
         } catch (Exception e) {
             e.printStackTrace();
@@ -525,6 +539,49 @@ public class Main {
             e.printStackTrace();
         }
         return "err";
+    }
+
+    @Command
+    public String createChatRoom(String roomName) {
+        try {
+            currMuc = new MultiUserChat(connection, roomName + "@conference.tttalk.org");
+            currMuc.create(account);
+            currMuc.sendConfigurationForm(new Form(Form.TYPE_SUBMIT));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "ok";
+    }
+
+    @Command
+    public String joinChatRoom(String roomName) {
+        try {
+            currMuc = new MultiUserChat(connection, roomName + "@conference.tttalk.org");
+            currMuc.join(account);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "ok";
+    }
+
+    @Command
+    public String invite(String user) {
+        currMuc.invite(user, "Meet me in this excellent room");
+        return "ok";
+    }
+
+    @Command
+    public String sendRoomMessage(String text) {
+        try {
+            if (currMuc != null) {
+                currMuc.sendMessage(text);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "ok";
     }
 
     @Command
