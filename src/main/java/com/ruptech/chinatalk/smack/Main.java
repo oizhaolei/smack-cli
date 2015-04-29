@@ -10,10 +10,7 @@ import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.packet.Presence;
 import org.jivesoftware.smack.provider.ProviderManager;
-import org.jivesoftware.smackx.Form;
-import org.jivesoftware.smackx.OfflineMessageManager;
-import org.jivesoftware.smackx.ReportedData;
-import org.jivesoftware.smackx.ServiceDiscoveryManager;
+import org.jivesoftware.smackx.*;
 import org.jivesoftware.smackx.filetransfer.FileTransferManager;
 import org.jivesoftware.smackx.filetransfer.OutgoingFileTransfer;
 import org.jivesoftware.smackx.muc.MultiUserChat;
@@ -23,11 +20,11 @@ import org.jivesoftware.smackx.search.UserSearchManager;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
-import java.awt.*;
 import java.io.*;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 
 public class Main {
     String server;// = "127.0.0.1";
@@ -128,7 +125,7 @@ public class Main {
         //registerPacketListener();
         ServiceDiscoveryManager manager = ServiceDiscoveryManager.getInstanceFor(connection);
         boolean mucSupported = manager.includesFeature("http://jabber.org/protocol/muc");
-        System.out.println( "mucSupported:" + mucSupported);
+        System.out.println("mucSupported:" + mucSupported);
 
     }
 
@@ -606,6 +603,18 @@ public class Main {
 
     @Command
     public String sendServerPing() {
+        return "ok";
+
+    }
+
+    @Command
+    public String sendGroup() {
+        try {
+            List<String> sharedGroups = SharedGroupManager.getSharedGroups(connection);
+            System.out.print(sharedGroups);
+        } catch (XMPPException e) {
+            e.printStackTrace();
+        }
         return "ok";
 
     }
